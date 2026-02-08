@@ -1,0 +1,52 @@
+experiment:
+  name: "asr_comparison_german_medical"
+  version: "1.0"
+  description: "Comparison of Whisper, Wav2Vec2, and Google Speech API on German medical conversations"
+  max_samples: 100  # Start small for testing
+  log_level: "INFO"
+  log_file: "experiment.log"
+
+dataset:
+  splits: ["eval"]  # Test on eval split first
+  test_split: "eval"
+  target_sample_rate: 16000
+  audio_column: "audio"
+  text_column: "text"
+  duration_column: "duration"
+
+paths:
+  raw_data_dir: "data/raw"
+  processed_dir: "data/processed"
+  outputs_dir: "data/outputs"
+  cache_dir: "data/cache"
+
+asr:
+  models:
+    whisper_base:
+      name: "whisper_base"
+      model_type: "whisper"
+      model_size: "base"
+      language: "de"
+      device: "cpu"  # Change to "cuda" if you have GPU
+    
+    whisper_small:
+      name: "whisper_small"
+      model_type: "whisper"
+      model_size: "small"
+      language: "de"
+      device: "cpu"
+    
+    wav2vec2_german:
+      name: "wav2vec2_german"
+      model_type: "wav2vec2"
+      model_name: "facebook/wav2vec2-large-xlsr-53-german"
+      language: "de"
+      device: "cpu"
+      chunk_length_s: 30
+      stride_length_s: 5
+    
+    google_speech:
+      name: "google_speech"
+      model_type: "google_speech"
+      language: "de-DE"
+      credentials_path: "/path/to/your/credentials.json"  # Set this if using Google API

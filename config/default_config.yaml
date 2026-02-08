@@ -1,0 +1,157 @@
+paths:
+  project_root: .
+  data_dir: "/Users/mahriovezmyradova/MultiMed_dataset/German"
+
+dataset:
+  splits: ["train", "eval", "test"]
+  audio_column: "audio"
+  text_column: "text"
+  duration_column: "duration"
+  max_samples_per_split: 1000
+  test_split: "eval"
+  random_seed: 42
+  target_sample_rate: 16000
+  normalize_audio: true
+  remove_silence: false
+
+asr:
+  whisper_models:
+    - name: "whisper_tiny"
+      model_size: "tiny"
+      language: "de"
+      device: "auto"
+    - name: "whisper_base"
+      model_size: "base"
+      language: "de"
+      device: "auto"
+    - name: "whisper_small"
+      model_size: "small"
+      language: "de"
+      device: "auto"
+    - name: "whisper_medium"
+      model_size: "medium"
+      language: "de"
+      device: "auto"
+    - name: "whisper_large_v2"
+      model_size: "large-v2"
+      language: "de"
+      device: "auto"
+  
+  wav2vec2_models:
+    - name: "wav2vec2_base"
+      model_name: "facebook/wav2vec2-base-960h"
+      language: "de"
+      device: "auto"
+    - name: "wav2vec2_large_xlsr"
+      model_name: "facebook/wav2vec2-large-xlsr-53-german"
+      language: "de"
+      device: "auto"
+    - name: "wav2vec2_large_xlsr_300m"
+      model_name: "facebook/wav2vec2-large-xlsr-53"
+      language: "de"
+      device: "auto"
+  
+  google_config:
+    enabled: false
+    language_code: "de-DE"
+    use_enhanced: true
+    model: "default"
+    enable_automatic_punctuation: true
+  
+  batch_size: 16
+  num_workers: 4
+  compute_type: "float16"
+  use_cache: true
+
+evaluation:
+  metrics:
+    - "wer"
+    - "cer"
+    - "mer"
+    - "wil"
+    - "precision"
+    - "recall"
+    - "f1"
+    - "bleu"
+    - "rouge"
+    - "semantic_similarity"
+  
+  statistical_tests:
+    - "paired_t_test"
+    - "wilcoxon_signed_rank"
+    - "anova"
+  
+  confidence_level: 0.95
+  bootstrap_samples: 1000
+  
+  analyze_errors: true
+  error_categories:
+    - "medical_terms"
+    - "numbers"
+    - "dates"
+    - "proper_nouns"
+    - "acronyms"
+  
+  save_figures: true
+  figure_format: "png"
+  figure_dpi: 300
+
+experiment:
+  name: "asr_comparison_german_medical"
+  version: "1.0.0"
+  description: "Comparison of ASR models on German medical conversations"
+  max_samples: null
+  use_multiprocessing: true
+  save_intermediate: true
+  verbose: true
+  log_level: "INFO"
+  log_file: "experiment.log"
+
+
+  # config/default_config.yaml (add summarization section)
+# ... existing config ...
+
+summarization:
+  extractive_models:
+    - name: "extractive_bert"
+      model_type: "extractive"
+      model_name: "bert-base-german-cased"
+      num_sentences: 3
+      language: "de"
+      device: "auto"
+    
+    - name: "extractive_sbert"
+      model_type: "extractive"
+      model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+      num_sentences: 3
+      language: "de"
+      device: "auto"
+  
+  abstractive_models:
+    - name: "abstractive_openai"
+      model_type: "abstractive"
+      provider: "openai"
+      model_name: "gpt-3.5-turbo"
+      max_length: 200
+      temperature: 0.3
+      language: "de"
+    
+    - name: "abstractive_hf"
+      model_type: "abstractive"
+      provider: "huggingface"
+      model_name: "facebook/bart-large-cnn"
+      max_length: 150
+      language: "de"
+      device: "auto"
+  
+  medical_models:
+    - name: "medical_summarizer"
+      model_type: "medical"
+      categories: ["symptoms", "diagnosis", "medication", "treatment", "recommendations"]
+      use_extractive: true
+      language: "de"
+  
+  evaluation:
+    metrics: ["rouge", "bleu", "bert_score", "semantic_similarity", "medical_coverage"]
+    reference_source: "original_text"  # or "human_summary"
+    max_summary_length: 250

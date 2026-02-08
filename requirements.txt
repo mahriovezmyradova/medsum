@@ -1,0 +1,50 @@
+# Core
+torch>=2.0.0
+transformers>=4.35.0
+datasets>=2.14.0
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Audio Processing
+librosa>=0.10.0
+soundfile>=0.12.0
+pydub>=0.25.1
+torchaudio>=2.0.0
+
+# ASR
+openai-whisper>=20231106
+speechbrain>=0.5.16
+google-cloud-speech>=2.21.0
+jiwer>=3.0.0
+
+# Summarization
+sentence-transformers>=2.2.0
+bert-extractive-summarizer>=0.10.1
+openai>=1.3.0
+langchain>=0.0.340
+
+# Evaluation
+rouge-score>=0.1.2
+bert-score>=0.3.13
+evaluate>=0.4.0
+nltk>=3.8.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.17.0
+
+# Web App (for later)
+streamlit>=1.28.0
+gradio>=3.50.0
+
+# Utilities
+pyyaml>=6.0.1
+tqdm>=4.66.0
+python-dotenv>=1.0.0
+loguru>=0.7.0
+joblib>=1.3.0
+
+# Testing
+pytest>=7.4.0

@@ -1,0 +1,266 @@
+"""
+Audio processing utilities.
+"""
+import numpy as np
+import torch
+import torchaudio
+import soundfile as sf
+import io
+from typing import Optional, Dict, Any, Tuple
+from dataclasses import dataclass, field
+import warnings
+warnings.filterwarnings('ignore')
+
+# Import logger directly
+import logging
+logger = logging.getLogger(__name__)
+
+@dataclass
+class AudioData:
+    """Container for audio data."""
+    array: np.ndarray
+    sample_rate: int
+    duration: float
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        if self.array is not None and self.sample_rate > 0:
+            self.duration = len(self.array) / self.sample_rate
+
+class AudioProcessor:
+    """Audio processing utilities."""
+    
+    def __init__(self, target_sr: int = 16000, normalize: bool = True, 
+                 remove_silence: bool = False):
+        """
+        Initialize audio processor.
+        
+        Args:
+            target_sr: Target sample rate
+            normalize: Whether to normalize audio
+            remove_silence: Whether to remove silence
+        """
+        self.target_sr = target_sr
+        self.normalize = normalize
+        self.remove_silence = remove_silence
+        
+        logger.info(f"Initialized AudioProcessor: target_sr={target_sr}, "
+                   f"normalize={normalize}, remove_silence={remove_silence}")
+    
+    def process(self, audio_item: Any) -> Optional[AudioData]:
+        """
+        Process audio item from dataset.
+        
+        Args:
+            audio_item: Audio data (dict with bytes, array, etc.)
+            
+        Returns:
+            AudioData or None if processing fails
+        """
+        try:
+            if audio_item is None:
+                return None
+            
+            # Case 1: Dictionary with bytes (OGG format)
+            if isinstance(audio_item, dict) and 'bytes' in audio_item:
+                return self._process_bytes_audio(audio_item['bytes'])
+            
+            # Case 2: Dictionary with array
+            elif isinstance(audio_item, dict) and 'array' in audio_item:
+                array = np.array(audio_item['array'])
+                sr = audio_item.get('sampling_rate', self.target_sr)
+                return self._process_array(array, sr)
+            
+            # Case 3: Raw array
+            elif isinstance(audio_item, np.ndarray):
+                return self._process_array(audio_item, self.target_sr)
+            
+            # Case 4: Bytes directly
+            elif isinstance(audio_item, bytes):
+                return self._process_bytes_audio(audio_item)
+            
+            else:
+                logger.warning(f"Unsupported audio type: {type(audio_item)}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to process audio: {e}")
+            return None
+    
+    def _process_bytes_audio(self, audio_bytes: bytes) -> Optional[AudioData]:
+        """Process audio from bytes."""
+        try:
+            # Create file-like object
+            audio_file = io.BytesIO(audio_bytes)
+            
+            # Read with soundfile
+            array, sr = sf.read(audio_file)
+            
+            return self._process_array(array, sr)
+            
+        except Exception as e:
+            logger.error(f"Failed to process bytes audio: {e}")
+            return None
+    
+    def _process_array(self, array: np.ndarray, sr: int) -> AudioData:
+        """Process audio array."""
+        # Convert to mono if stereo
+        if len(array.shape) > 1:
+            array = self._to_mono(array)
+        
+        # Resample if needed
+        if sr != self.target_sr:
+            array = self.resample(array, sr, self.target_sr)
+            sr = self.target_sr
+        
+        # Normalize if requested
+        if self.normalize:
+            array = self.normalize_audio(array)
+        
+        # Remove silence if requested
+        if self.remove_silence:
+            array = self.remove_silence_segments(array, sr)
+        
+        # Create AudioData
+        return AudioData(
+            array=array,
+            sample_rate=sr,
+            duration=len(array) / sr,
+            metadata={
+                'original_sample_rate': sr,
+                'normalized': self.normalize,
+                'silence_removed': self.remove_silence
+            }
+        )
+    
+    def _to_mono(self, array: np.ndarray) -> np.ndarray:
+        """Convert stereo to mono."""
+        if len(array.shape) == 1:
+            return array
+        
+        # Average channels
+        if array.shape[0] == 2:
+            return np.mean(array, axis=0)
+        elif array.shape[1] == 2:
+            return np.mean(array, axis=1)
+        else:
+            # Take first channel
+            return array[:, 0] if array.shape[1] > 1 else array
+    
+    def resample(self, array: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+        """Resample audio using torchaudio."""
+        if orig_sr == target_sr:
+            return array
+        
+        # Convert to torch tensor
+        audio_tensor = torch.FloatTensor(array)
+        
+        if len(audio_tensor.shape) == 1:
+            audio_tensor = audio_tensor.unsqueeze(0)
+        
+        # Create resampler
+        resampler = torchaudio.transforms.Resample(
+            orig_freq=orig_sr,
+            new_freq=target_sr
+        )
+        
+        # Resample
+        resampled = resampler(audio_tensor)
+        
+        return resampled.squeeze().numpy()
+    
+    def normalize_audio(self, array: np.ndarray) -> np.ndarray:
+        """Normalize audio to range [-1, 1]."""
+        if len(array) == 0:
+            return array
+        
+        max_val = np.max(np.abs(array))
+        if max_val > 0:
+            return array / max_val
+        
+        return array
+    
+    def remove_silence_segments(self, array: np.ndarray, sr: int, 
+                               threshold: float = 0.01) -> np.ndarray:
+        """
+        Remove silence segments from audio.
+        
+        Args:
+            array: Audio array
+            sr: Sample rate
+            threshold: Silence threshold
+            
+        Returns:
+            Audio array with silence removed
+        """
+        # Simple energy-based silence removal
+        frame_length = int(0.025 * sr)  # 25ms frames
+        hop_length = int(0.010 * sr)    # 10ms hop
+        
+        # Calculate energy
+        energy = []
+        for i in range(0, len(array) - frame_length, hop_length):
+            frame = array[i:i + frame_length]
+            energy.append(np.mean(frame ** 2))
+        
+        if not energy:
+            return array
+        
+        # Find non-silent frames
+        energy_threshold = np.percentile(energy, 25)  # Use 25th percentile as threshold
+        non_silent_frames = [e > energy_threshold * threshold for e in energy]
+        
+        # Find start and end of speech
+        if not any(non_silent_frames):
+            return array
+        
+        # Get indices
+        speech_segments = []
+        in_speech = False
+        start_idx = 0
+        
+        for i, is_speech in enumerate(non_silent_frames):
+            if is_speech and not in_speech:
+                start_idx = i * hop_length
+                in_speech = True
+            elif not is_speech and in_speech:
+                end_idx = i * hop_length + frame_length
+                speech_segments.append((start_idx, end_idx))
+                in_speech = False
+        
+        # Add last segment if still in speech
+        if in_speech:
+            speech_segments.append((start_idx, len(array)))
+        
+        # Extract non-silent segments
+        if speech_segments:
+            segments = []
+            for start, end in speech_segments:
+                segments.append(array[start:end])
+            
+            return np.concatenate(segments)
+        
+        return array
+    
+    def save(self, audio_data: AudioData, filepath: Path):
+        """Save audio data to file."""
+        try:
+            sf.write(str(filepath), audio_data.array, audio_data.sample_rate)
+            logger.debug(f"Saved audio to {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save audio: {e}")
+    
+    def load(self, filepath: Path) -> Optional[AudioData]:
+        """Load audio from file."""
+        try:
+            array, sr = sf.read(str(filepath))
+            
+            return AudioData(
+                array=array,
+                sample_rate=sr,
+                duration=len(array) / sr,
+                metadata={'source': 'file', 'path': str(filepath)}
+            )
+        except Exception as e:
+            logger.error(f"Failed to load audio: {e}")
+            return None
