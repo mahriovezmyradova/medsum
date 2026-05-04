@@ -33,11 +33,9 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 
 try:
-    from src.utils.audio_processing import AudioProcessor
+    from src.utils.audio_utils import AudioProcessor
 except ImportError:
-    import sys
-    sys.path.append(str(Path(__file__).parent.parent))
-    from utils.audio_processing import AudioProcessor
+    from utils.audio_utils import AudioProcessor
 
 class WhisperASR(BaseASR):
     """Whisper ASR implementation using OpenAI's Whisper models."""
@@ -72,7 +70,7 @@ class WhisperASR(BaseASR):
         self.best_of = config.get("best_of", 5)
         self.temperature = config.get("temperature", 0.0)
         
-        self.audio_processor = AudioProcessor(target_sr=16000, normalize=True)
+        self.audio_processor = AudioProcessor(target_sr=16000)
         
         logger.info(f"Initialized WhisperASR: {self.model_size}, "
                    f"device: {self.device}, language: {self.language}")
@@ -143,7 +141,7 @@ class WhisperASR(BaseASR):
         try:
             # Preprocess audio
             if sample_rate != 16000:
-                audio = self.audio_processor.resample(audio, sample_rate, 16000)
+                audio = self.audio_processor.resample_audio(audio, sample_rate, 16000)
                 sample_rate = 16000
             
             # Normalize

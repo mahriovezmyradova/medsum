@@ -136,11 +136,8 @@ class Wav2Vec2ASR(BaseASR):
         try:
             # Preprocess audio
             if sample_rate != 16000:
-                # Simple resampling
-                import torch
-                import torchaudio
-                
                 audio_tensor = torch.FloatTensor(audio).unsqueeze(0)
+                import torchaudio
                 transform = torchaudio.transforms.Resample(sample_rate, 16000)
                 audio = transform(audio_tensor).squeeze().numpy()
                 sample_rate = 16000

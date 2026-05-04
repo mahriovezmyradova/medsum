@@ -1,377 +1,677 @@
 #!/usr/bin/env python3
 """
-Final analysis script for MultiMed German dataset.
+COMPLETE DATASET ANALYSIS FOR MEDICAL ASR
+Processes entire MultiMed dataset (train, eval, test) and provides detailed analysis.
 """
-
 import sys
 from pathlib import Path
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import numpy as np
+import io
+import soundfile as sf
+from tqdm import tqdm
+import warnings
+import logging
 import json
+from datetime import datetime
+import os
+
+warnings.filterwarnings('ignore')
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('dataset_analysis.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Add src to path
 current_dir = Path(__file__).parent
 project_root = current_dir.parent
 sys.path.append(str(project_root / "src"))
 
-from src.data.loader import MultiMedLoader
+# ==================== CONFIGURATION ====================
+DATASET_PATH = Path("/Users/mahriovezmyradova/MultiMed_dataset/German")
+SPLITS = ["train", "eval", "test"]
+OUTPUT_DIR = Path("data/outputs/full_dataset_analysis")
+MODELS_TO_TEST = ["whisper_base", "wav2vec2_german"]  # Skip Google for now
+SAMPLE_LIMIT_PER_SPLIT = None  # Set to None to process all, or e.g., 100 for testing
 
-def ensure_directory(path: Path):
-    """Ensure directory exists."""
-    if not path.exists():
-        path.mkdir(parents=True, exist_ok=True)
-    return path
+# ==================== HELPER FUNCTIONS ====================
 
-def main():
-    """Main analysis function."""
+def load_entire_dataset():
+    """Load entire MultiMed dataset."""
+    dataset_info = {}
     
-    # Setup output directories
-    output_dir = ensure_directory(project_root / "data" / "outputs")
-    figures_dir = ensure_directory(output_dir / "figures")
-    
-    print(f"Output directory: {output_dir}")
-    print(f"Figures directory: {figures_dir}")
-    
-    # Initialize loader
-    config_path = project_root / "config" / "config.yaml"
-    loader = MultiMedLoader(config_path=str(config_path))
-    
-    # Get dataset info
-    print("\n" + "=" * 70)
-    print("MULTIMED GERMAN DATASET - COMPREHENSIVE ANALYSIS")
-    print("=" * 70)
-    
-    # Load all splits
-    splits = loader.load_all_splits()
-    
-    # Analysis results storage
-    analysis_results = {
-        "dataset_summary": {},
-        "split_statistics": {},
-        "sample_details": {}
-    }
-    
-    # 1. Basic Statistics
-    print("\n1. BASIC DATASET STATISTICS")
-    print("-" * 40)
-    
-    total_samples = sum(len(df) for df in splits.values())
-    print(f"Total samples across all splits: {total_samples:,}")
-    print(f"Number of splits: {len(splits)}")
-    
-    analysis_results["dataset_summary"]["total_samples"] = total_samples
-    analysis_results["dataset_summary"]["num_splits"] = len(splits)
-    analysis_results["dataset_summary"]["split_names"] = list(splits.keys())
-    
-    # 2. Detailed Analysis per Split
-    print("\n2. DETAILED ANALYSIS PER SPLIT")
-    print("-" * 40)
-    
-    split_stats = []
-    
-    for split_name, df in splits.items():
-        print(f"\n📊 {split_name.upper()} SPLIT")
-        print(f"   {'─' * 30}")
+    for split in SPLITS:
+        split_file = DATASET_PATH / f"{split}-00000-of-00001.parquet"
+        if not split_file.exists():
+            logger.warning(f"Split file not found: {split_file}")
+            continue
+            
+        logger.info(f"Loading {split} split...")
+        df = pd.read_parquet(split_file)
         
-        stats = {
-            "split": split_name,
-            "samples": len(df),
-            "columns": list(df.columns)
+        # Apply sample limit if specified
+        if SAMPLE_LIMIT_PER_SPLIT and len(df) > SAMPLE_LIMIT_PER_SPLIT:
+            df = df.sample(n=SAMPLE_LIMIT_PER_SPLIT, random_state=42)
+            logger.info(f"  Limited to {SAMPLE_LIMIT_PER_SPLIT} samples")
+        
+        dataset_info[split] = {
+            'dataframe': df,
+            'samples': len(df),
+            'file': split_file
         }
         
-        # Text Analysis
-        if 'text' in df.columns:
-            texts = df['text'].astype(str)
-            
-            char_stats = texts.str.len()
-            word_stats = texts.str.split().str.len()
-            
-            text_analysis = {
-                "char_min": int(char_stats.min()),
-                "char_max": int(char_stats.max()),
-                "char_mean": float(char_stats.mean()),
-                "char_std": float(char_stats.std()),
-                "word_min": int(word_stats.min()),
-                "word_max": int(word_stats.max()),
-                "word_mean": float(word_stats.mean()),
-                "word_std": float(word_stats.std()),
-                "missing": int(texts.isnull().sum())
-            }
-            
-            stats["text_analysis"] = text_analysis
-            
-            print(f"   📝 Text Analysis:")
-            print(f"      • Samples: {len(df):,}")
-            print(f"      • Characters: {text_analysis['char_min']:,} - {text_analysis['char_max']:,} "
-                  f"(avg: {text_analysis['char_mean']:.1f} ± {text_analysis['char_std']:.1f})")
-            print(f"      • Words: {text_analysis['word_min']:,} - {text_analysis['word_max']:,} "
-                  f"(avg: {text_analysis['word_mean']:.1f} ± {text_analysis['word_std']:.1f})")
-            
-            # Sample texts
-            sample_texts = []
-            for i in range(min(2, len(texts))):
-                sample = texts.iloc[i]
-                truncated = sample[:80] + "..." if len(sample) > 80 else sample
-                sample_texts.append(truncated)
-            
-            stats["sample_texts"] = sample_texts
+        # Basic statistics
+        texts = df['text'].astype(str).tolist()
+        text_lengths = [len(text.split()) for text in texts]
         
-        # Duration Analysis
-        if 'duration' in df.columns:
-            durations = df['duration']
+        logger.info(f"  ✓ Loaded {len(df)} samples")
+        logger.info(f"  ✓ Average words: {np.mean(text_lengths):.1f}")
+        logger.info(f"  ✓ Min words: {np.min(text_lengths)}")
+        logger.info(f"  ✓ Max words: {np.max(text_lengths)}")
+    
+    return dataset_info
+
+def load_audio_from_item(audio_item):
+    """Load audio from parquet item."""
+    try:
+        if isinstance(audio_item, dict) and 'bytes' in audio_item:
+            audio_bytes = audio_item['bytes']
+            audio_file = io.BytesIO(audio_bytes)
+            array, sr = sf.read(audio_file)
             
-            duration_analysis = {
-                "min": float(durations.min()),
-                "max": float(durations.max()),
-                "mean": float(durations.mean()),
-                "std": float(durations.std())
-            }
+            # Convert to mono if stereo
+            if len(array.shape) > 1:
+                array = np.mean(array, axis=1)
             
-            stats["duration_analysis"] = duration_analysis
+            # Convert to float32 and normalize
+            array = array.astype(np.float32)
+            array_max = np.max(np.abs(array))
+            if array_max > 0:
+                array = array / array_max
             
-            print(f"   ⏱️  Duration Analysis:")
-            print(f"      • Range: {duration_analysis['min']:.1f}s - {duration_analysis['max']:.1f}s")
-            print(f"      • Average: {duration_analysis['mean']:.1f}s ± {duration_analysis['std']:.1f}s")
+            return array, sr
+        return None, None
+    except Exception as e:
+        logger.error(f"Failed to load audio: {e}")
+        return None, None
+
+def calculate_wer(reference, hypothesis):
+    """Calculate Word Error Rate."""
+    try:
+        import jiwer
         
-        # Audio Analysis
-        if 'audio' in df.columns:
-            first_audio = df['audio'].iloc[0]
-            audio_info = {
-                "type": str(type(first_audio)),
-                "has_bytes": isinstance(first_audio, dict) and 'bytes' in first_audio
-            }
-            
-            if isinstance(first_audio, dict) and 'bytes' in first_audio:
-                audio_info["bytes_size"] = len(first_audio['bytes'])
-                print(f"   🔊 Audio Format: OGG bytes ({audio_info['bytes_size']:,} bytes)")
-            
-            stats["audio_info"] = audio_info
+        def clean_text(text):
+            text = text.lower()
+            import string
+            text = text.translate(str.maketrans('', '', string.punctuation))
+            text = ' '.join(text.split())
+            return text
         
-        split_stats.append(stats)
-        analysis_results["split_statistics"][split_name] = stats
-    
-    # 3. Create Visualizations
-    print("\n3. CREATING VISUALIZATIONS")
-    print("-" * 40)
-    
-    # Set style
-    plt.style.use('default')
-    sns.set_style("whitegrid")
-    
-    # Figure 1: Word Count Distribution
-    fig1, axes1 = plt.subplots(1, len(splits), figsize=(16, 5))
-    if len(splits) == 1:
-        axes1 = [axes1]
-    
-    colors = ['#1f77b4', '#2ca02c', '#d62728']
-    
-    for idx, (split_name, df) in enumerate(splits.items()):
-        if 'text' in df.columns:
-            texts = df['text'].astype(str)
-            word_counts = texts.str.split().str.len()
+        ref_clean = clean_text(reference)
+        hyp_clean = clean_text(hypothesis)
+        
+        return jiwer.wer(ref_clean, hyp_clean)
+        
+    except ImportError:
+        # Simple WER calculation fallback
+        ref_words = reference.lower().split()
+        hyp_words = hypothesis.lower().split()
+        
+        n, m = len(ref_words), len(hyp_words)
+        dp = [[0] * (m + 1) for _ in range(n + 1)]
+        
+        for i in range(n + 1):
+            dp[i][0] = i
+        for j in range(m + 1):
+            dp[0][j] = j
             
-            ax = axes1[idx]
-            n, bins, patches = ax.hist(word_counts, bins=40, alpha=0.7, 
-                                      color=colors[idx % len(colors)], 
-                                      edgecolor='black', density=True)
+        for i in range(1, n + 1):
+            for j in range(1, m + 1):
+                if ref_words[i-1] == hyp_words[j-1]:
+                    dp[i][j] = dp[i-1][j-1]
+                else:
+                    dp[i][j] = min(
+                        dp[i-1][j] + 1,
+                        dp[i][j-1] + 1,
+                        dp[i-1][j-1] + 1
+                    )
+        
+        errors = dp[n][m]
+        return errors / max(n, 1)
+
+# ==================== ASR MODEL FUNCTIONS ====================
+
+def initialize_model(model_name):
+    """Initialize ASR model."""
+    try:
+        if model_name.startswith("whisper"):
+            from asr.whisper import WhisperASR
+            model_size = model_name.split("_")[1] if "_" in model_name else "base"
+            config = {
+                "name": model_name,
+                "model_size": model_size,
+                "language": "de",
+                "device": "cpu"
+            }
+            model = WhisperASR(config)
             
-            # Add statistics
-            mean_val = word_counts.mean()
-            median_val = word_counts.median()
+        elif model_name.startswith("wav2vec2"):
+            from asr.wav2vec2 import Wav2Vec2ASR
+            config = {
+                "name": model_name,
+                "model_name": "facebook/wav2vec2-large-xlsr-53-german",
+                "language": "de",
+                "device": "cpu",
+                "cache_dir": str(Path.home() / ".cache" / "huggingface")
+            }
+            model = Wav2Vec2ASR(config)
             
-            ax.axvline(mean_val, color='red', linestyle='--', linewidth=2,
-                      label=f'Mean: {mean_val:.1f}')
-            ax.axvline(median_val, color='green', linestyle=':', linewidth=2,
-                      label=f'Median: {median_val:.1f}')
-            
-            ax.set_title(f'{split_name.capitalize()} Split\n({len(df):,} samples)', 
-                        fontsize=12, fontweight='bold')
-            ax.set_xlabel('Word Count', fontsize=10)
-            ax.set_ylabel('Density', fontsize=10)
-            ax.grid(True, alpha=0.3)
-            ax.legend(fontsize=9)
-    
-    plt.suptitle('Word Count Distribution by Dataset Split', 
-                fontsize=14, fontweight='bold', y=1.02)
-    plt.tight_layout()
-    
-    word_count_path = figures_dir / 'word_count_distribution.png'
-    plt.savefig(word_count_path, dpi=150, bbox_inches='tight', facecolor='white')
-    print(f"   ✅ Saved: {word_count_path}")
-    
-    # Figure 2: Duration Distribution
-    fig2, axes2 = plt.subplots(1, len(splits), figsize=(16, 5))
-    if len(splits) == 1:
-        axes2 = [axes2]
-    
-    for idx, (split_name, df) in enumerate(splits.items()):
-        if 'duration' in df.columns:
-            durations = df['duration']
-            
-            ax = axes2[idx]
-            ax.hist(durations, bins=30, alpha=0.7, color=colors[idx % len(colors)], 
-                   edgecolor='black', density=True)
-            
-            mean_val = durations.mean()
-            ax.axvline(mean_val, color='red', linestyle='--', linewidth=2,
-                      label=f'Mean: {mean_val:.1f}s')
-            
-            ax.set_title(f'{split_name.capitalize()} Split\n({len(df):,} samples)', 
-                        fontsize=12, fontweight='bold')
-            ax.set_xlabel('Duration (seconds)', fontsize=10)
-            ax.set_ylabel('Density', fontsize=10)
-            ax.grid(True, alpha=0.3)
-            ax.legend(fontsize=9)
-    
-    plt.suptitle('Audio Duration Distribution by Dataset Split', 
-                fontsize=14, fontweight='bold', y=1.02)
-    plt.tight_layout()
-    
-    duration_path = figures_dir / 'duration_distribution.png'
-    plt.savefig(duration_path, dpi=150, bbox_inches='tight', facecolor='white')
-    print(f"   ✅ Saved: {duration_path}")
-    
-    # Figure 3: Combined Statistics
-    fig3, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    
-    # Subplot 1: Sample Counts
-    split_names = list(splits.keys())
-    sample_counts = [len(df) for df in splits.values()]
-    
-    bars = ax1.bar(split_names, sample_counts, color=colors[:len(splits)], alpha=0.8)
-    ax1.set_title('Number of Samples per Split', fontsize=12, fontweight='bold')
-    ax1.set_xlabel('Split', fontsize=10)
-    ax1.set_ylabel('Number of Samples', fontsize=10)
-    ax1.grid(True, alpha=0.3, axis='y')
-    
-    # Add value labels on bars
-    for bar in bars:
-        height = bar.get_height()
-        ax1.text(bar.get_x() + bar.get_width()/2., height + 10,
-                f'{int(height):,}', ha='center', va='bottom', fontsize=9)
-    
-    # Subplot 2: Average Words vs Duration
-    avg_words = []
-    avg_durations = []
-    
-    for split_name, df in splits.items():
-        if 'text' in df.columns:
-            words = df['text'].astype(str).str.split().str.len().mean()
-            avg_words.append(words)
         else:
-            avg_words.append(0)
+            logger.error(f"Unknown model: {model_name}")
+            return None
         
-        if 'duration' in df.columns:
-            duration = df['duration'].mean()
-            avg_durations.append(duration)
+        model.load_model()
+        logger.info(f"✓ Initialized {model_name}")
+        return model
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize {model_name}: {e}")
+        return None
+
+def process_batch_with_model(model, audio_arrays, sample_rates, reference_texts, split_name, model_name):
+    """Process a batch of audio with a specific model."""
+    results = []
+    
+    logger.info(f"Processing {len(audio_arrays)} samples with {model_name}...")
+    
+    for idx, (audio, sr, ref) in enumerate(tqdm(zip(audio_arrays, sample_rates, reference_texts), 
+                                                total=len(audio_arrays), 
+                                                desc=f"{model_name}")):
+        try:
+            # Transcribe
+            result = model.transcribe(audio, sr)
+            
+            # Calculate WER
+            wer = calculate_wer(ref, result.text)
+            
+            # Store detailed result
+            sample_result = {
+                'split': split_name,
+                'sample_id': idx,
+                'model': model_name,
+                'reference_text': ref,
+                'asr_text': result.text,
+                'wer': wer,
+                'processing_time': result.processing_time,
+                'confidence': result.confidence,
+                'audio_duration': len(audio) / sr if sr > 0 else 0,
+                'word_count': len(ref.split()),
+                'audio_length': len(audio)
+            }
+            
+            results.append(sample_result)
+            
+        except Exception as e:
+            logger.error(f"Error processing sample {idx} with {model_name}: {e}")
+            # Add error result
+            results.append({
+                'split': split_name,
+                'sample_id': idx,
+                'model': model_name,
+                'reference_text': ref,
+                'asr_text': '',
+                'wer': 1.0,  # Max error
+                'processing_time': 0,
+                'confidence': 0,
+                'audio_duration': 0,
+                'word_count': len(ref.split()),
+                'error': str(e)
+            })
+    
+    return results
+
+# ==================== ANALYSIS FUNCTIONS ====================
+
+def generate_detailed_analysis(all_results):
+    """Generate comprehensive analysis from all results."""
+    analysis = {
+        'overall_summary': {},
+        'per_split_summary': {},
+        'per_model_summary': {},
+        'top_errors': {},
+        'sample_comparisons': []
+    }
+    
+    # Convert to DataFrame for easier analysis
+    df = pd.DataFrame(all_results)
+    
+    # Overall statistics
+    analysis['overall_summary'] = {
+        'total_samples': len(df),
+        'unique_splits': df['split'].unique().tolist(),
+        'models_tested': df['model'].unique().tolist()
+    }
+    
+    # Per-split analysis
+    for split in df['split'].unique():
+        split_df = df[df['split'] == split]
+        analysis['per_split_summary'][split] = {
+            'samples': len(split_df),
+            'avg_wer': split_df['wer'].mean(),
+            'std_wer': split_df['wer'].std(),
+            'avg_processing_time': split_df['processing_time'].mean(),
+            'avg_confidence': split_df['confidence'].mean()
+        }
+    
+    # Per-model analysis
+    for model in df['model'].unique():
+        model_df = df[df['model'] == model]
+        analysis['per_model_summary'][model] = {
+            'samples': len(model_df),
+            'avg_wer': model_df['wer'].mean(),
+            'std_wer': model_df['wer'].std(),
+            'avg_processing_time': model_df['processing_time'].mean(),
+            'avg_confidence': model_df['confidence'].mean(),
+            'per_split_performance': {}
+        }
+        
+        # Per split for each model
+        for split in df['split'].unique():
+            split_model_df = model_df[model_df['split'] == split]
+            if len(split_model_df) > 0:
+                analysis['per_model_summary'][model]['per_split_performance'][split] = {
+                    'samples': len(split_model_df),
+                    'avg_wer': split_model_df['wer'].mean(),
+                    'std_wer': split_model_df['wer'].std()
+                }
+    
+    # Find top errors for manual review
+    for model in df['model'].unique():
+        model_df = df[df['model'] == model]
+        top_errors = model_df.nlargest(10, 'wer')
+        analysis['top_errors'][model] = []
+        
+        for _, row in top_errors.iterrows():
+            analysis['top_errors'][model].append({
+                'split': row['split'],
+                'sample_id': row['sample_id'],
+                'wer': row['wer'],
+                'reference_text': row['reference_text'],
+                'asr_text': row['asr_text'],
+                'confidence': row['confidence']
+            })
+    
+    # Sample comparisons (random samples for manual review)
+    random_samples = df.sample(min(20, len(df)), random_state=42)
+    analysis['sample_comparisons'] = []
+    
+    for _, row in random_samples.iterrows():
+        analysis['sample_comparisons'].append({
+            'split': row['split'],
+            'sample_id': row['sample_id'],
+            'model': row['model'],
+            'wer': row['wer'],
+            'reference_text': row['reference_text'],
+            'asr_text': row['asr_text'],
+            'confidence': row['confidence'],
+            'audio_duration': row['audio_duration'],
+            'processing_time': row['processing_time']
+        })
+    
+    return analysis, df
+
+def save_interactive_html(df, output_dir):
+    """Create interactive HTML report for manual review."""
+    try:
+        import plotly.express as px
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+        
+        # Create visualizations
+        
+        # 1. WER distribution by model
+        fig1 = px.box(df, x='model', y='wer', 
+                     title='WER Distribution by Model',
+                     color='model')
+        
+        # 2. Processing time by model
+        fig2 = px.box(df, x='model', y='processing_time',
+                     title='Processing Time Distribution by Model',
+                     color='model')
+        
+        # 3. WER by split for each model
+        fig3 = px.box(df, x='split', y='wer', color='model',
+                     title='WER by Dataset Split',
+                     facet_col='model')
+        
+        # 4. Confidence vs WER scatter plot
+        fig4 = px.scatter(df, x='confidence', y='wer', color='model',
+                         title='Confidence vs WER',
+                         hover_data=['reference_text', 'asr_text'])
+        
+        # 5. Audio duration distribution
+        fig5 = px.histogram(df, x='audio_duration', 
+                           title='Audio Duration Distribution',
+                           nbins=30)
+        
+        # Create HTML report
+        html_content = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Medical ASR Analysis Report</title>
+            <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                .section { margin-bottom: 40px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+                .plot { margin: 20px 0; }
+                table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                .good { color: green; }
+                .medium { color: orange; }
+                .poor { color: red; }
+            </style>
+        </head>
+        <body>
+            <h1>📊 Medical ASR Analysis Report</h1>
+            <p>Generated on: """ + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + """</p>
+            
+            <div class="section">
+                <h2>📈 Overview Statistics</h2>
+                <div id="plots"></div>
+            </div>
+            
+            <div class="section">
+                <h2>🔍 Top Errors for Manual Review</h2>
+                <div id="error-table"></div>
+            </div>
+            
+            <div class="section">
+                <h2>📋 Random Samples for Verification</h2>
+                <div id="sample-table"></div>
+            </div>
+            
+            <script>
+                // Plotly charts
+                const plotsDiv = document.getElementById('plots');
+                
+                // You would need to embed the Plotly figures here
+                // For now, we'll create a simple summary
+                
+                // Error table
+                const errorTable = document.getElementById('error-table');
+                errorTable.innerHTML = `
+                    <table>
+                        <tr>
+                            <th>Model</th>
+                            <th>Split</th>
+                            <th>Sample ID</th>
+                            <th>WER</th>
+                            <th>Reference Text</th>
+                            <th>ASR Text</th>
+                        </tr>
+                        <!-- Data will be populated by JavaScript -->
+                    </table>
+                `;
+                
+                // Sample table
+                const sampleTable = document.getElementById('sample-table');
+                sampleTable.innerHTML = `
+                    <table>
+                        <tr>
+                            <th>Model</th>
+                            <th>Split</th>
+                            <th>Sample ID</th>
+                            <th>WER</th>
+                            <th>Audio Duration</th>
+                            <th>Reference Text (first 50 chars)</th>
+                            <th>ASR Text (first 50 chars)</th>
+                        </tr>
+                        <!-- Data will be populated by JavaScript -->
+                    </table>
+                `;
+            </script>
+        </body>
+        </html>
+        """
+        
+        html_path = output_dir / "interactive_report.html"
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        logger.info(f"✓ Interactive HTML report saved: {html_path}")
+        
+    except ImportError:
+        logger.warning("Plotly not installed. Skipping interactive HTML report.")
+        logger.info("Install with: pip install plotly")
+
+def create_manual_review_csv(df, output_dir):
+    """Create CSV files for manual review of transcriptions."""
+    
+    # Create a comprehensive CSV for manual review
+    review_df = df[['split', 'sample_id', 'model', 'wer', 'confidence', 
+                    'processing_time', 'audio_duration', 'word_count',
+                    'reference_text', 'asr_text']].copy()
+    
+    # Add quality indicators
+    review_df['wer_category'] = pd.cut(review_df['wer'], 
+                                       bins=[0, 0.1, 0.3, 1.0],
+                                       labels=['Good (≤0.1)', 'Medium (0.1-0.3)', 'Poor (>0.3)'])
+    
+    review_df['confidence_category'] = pd.cut(review_df['confidence'],
+                                              bins=[0, 0.7, 0.9, 1.0],
+                                              labels=['Low (≤0.7)', 'Medium (0.7-0.9)', 'High (>0.9)'])
+    
+    # Sort by WER (highest errors first for review)
+    review_df = review_df.sort_values('wer', ascending=False)
+    
+    # Save
+    review_path = output_dir / "manual_review_data.csv"
+    review_df.to_csv(review_path, index=False, encoding='utf-8')
+    logger.info(f"✓ Manual review data saved: {review_path}")
+    
+    # Also create a simplified version
+    simple_df = review_df[['split', 'sample_id', 'model', 'wer', 'wer_category',
+                           'reference_text', 'asr_text']].head(50)  # Top 50 errors
+    simple_path = output_dir / "top_errors_for_review.csv"
+    simple_df.to_csv(simple_path, index=False, encoding='utf-8')
+    logger.info(f"✓ Top 50 errors saved: {simple_path}")
+    
+    return review_df
+
+# ==================== MAIN EXECUTION ====================
+
+def main():
+    print("=" * 80)
+    print("COMPLETE MEDICAL ASR DATASET ANALYSIS")
+    print("=" * 80)
+    print(f"Dataset: {DATASET_PATH}")
+    print(f"Splits to analyze: {SPLITS}")
+    print(f"Models: {MODELS_TO_TEST}")
+    print(f"Sample limit per split: {SAMPLE_LIMIT_PER_SPLIT or 'All'}")
+    print("=" * 80)
+    
+    # Create output directory
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Load dataset
+    dataset = load_entire_dataset()
+    
+    if not dataset:
+        logger.error("No dataset loaded!")
+        return
+    
+    # Initialize models
+    models = {}
+    for model_name in MODELS_TO_TEST:
+        model = initialize_model(model_name)
+        if model:
+            models[model_name] = model
         else:
-            avg_durations.append(0)
+            logger.warning(f"Skipping {model_name} - failed to initialize")
     
-    x = range(len(split_names))
-    ax2.plot(x, avg_words, 'o-', color='blue', linewidth=2, markersize=8, 
-            label='Avg Words', alpha=0.8)
-    ax2.plot(x, avg_durations, 's-', color='red', linewidth=2, markersize=8, 
-            label='Avg Duration (s)', alpha=0.8)
+    if not models:
+        logger.error("No models initialized!")
+        return
     
-    ax2.set_title('Average Words vs Duration per Split', fontsize=12, fontweight='bold')
-    ax2.set_xlabel('Split', fontsize=10)
-    ax2.set_ylabel('Value', fontsize=10)
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(split_names)
-    ax2.grid(True, alpha=0.3)
-    ax2.legend(fontsize=9)
+    # Process each split with each model
+    all_results = []
     
-    plt.suptitle('Dataset Overview Statistics', fontsize=14, fontweight='bold', y=1.02)
-    plt.tight_layout()
-    
-    overview_path = figures_dir / 'dataset_overview.png'
-    plt.savefig(overview_path, dpi=150, bbox_inches='tight', facecolor='white')
-    print(f"   ✅ Saved: {overview_path}")
-    
-    # 4. Save Results
-    print("\n4. SAVING ANALYSIS RESULTS")
-    print("-" * 40)
-    
-    # Save as CSV
-    summary_df = pd.DataFrame(split_stats)
-    summary_csv = output_dir / 'dataset_summary.csv'
-    summary_df.to_csv(summary_csv, index=False)
-    print(f"   ✅ CSV summary: {summary_csv}")
-    
-    # Save as JSON
-    summary_json = output_dir / 'detailed_analysis.json'
-    with open(summary_json, 'w', encoding='utf-8') as f:
-        json.dump(analysis_results, f, indent=2, ensure_ascii=False)
-    print(f"   ✅ JSON analysis: {summary_json}")
-    
-    # Create markdown report
-    report_md = output_dir / 'analysis_report.md'
-    with open(report_md, 'w', encoding='utf-8') as f:
-        f.write("# MultiMed German Dataset Analysis Report\n\n")
-        f.write(f"**Generated on:** {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+    for split_name, split_info in dataset.items():
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Processing {split_name.upper()} split")
+        logger.info(f"{'='*60}")
         
-        f.write("## 📊 Dataset Overview\n\n")
-        f.write(f"- **Total samples:** {total_samples:,}\n")
-        f.write(f"- **Number of splits:** {len(splits)}\n")
-        f.write(f"- **Splits:** {', '.join(splits.keys())}\n\n")
+        df = split_info['dataframe']
         
-        f.write("## 📈 Split Statistics\n\n")
-        for split_name, df in splits.items():
-            f.write(f"### {split_name.upper()} Split\n\n")
-            f.write(f"- **Samples:** {len(df):,}\n")
+        # Prepare audio data
+        audio_arrays = []
+        sample_rates = []
+        reference_texts = []
+        
+        logger.info("Loading audio data...")
+        for idx, row in tqdm(df.iterrows(), total=len(df), desc="Loading audio"):
+            audio_item = row['audio']
+            text = str(row['text'])
             
-            if 'text' in df.columns:
-                texts = df['text'].astype(str)
-                avg_words = texts.str.split().str.len().mean()
-                f.write(f"- **Average words:** {avg_words:.1f}\n")
+            audio_array, sr = load_audio_from_item(audio_item)
             
-            if 'duration' in df.columns:
-                avg_duration = df['duration'].mean()
-                f.write(f"- **Average duration:** {avg_duration:.1f}s\n")
+            if audio_array is not None:
+                audio_arrays.append(audio_array)
+                sample_rates.append(sr)
+                reference_texts.append(text)
+            else:
+                logger.warning(f"Failed to load audio for sample {idx}")
+        
+        logger.info(f"✓ Loaded {len(audio_arrays)}/{len(df)} audio samples")
+        
+        # Process with each model
+        for model_name, model in models.items():
+            logger.info(f"\nProcessing with {model_name}...")
             
-            f.write("\n")
-        
-        f.write("## 📊 Visualizations\n\n")
-        f.write(f"![Word Count Distribution](figures/word_count_distribution.png)\n\n")
-        f.write(f"![Duration Distribution](figures/duration_distribution.png)\n\n")
-        f.write(f"![Dataset Overview](figures/dataset_overview.png)\n\n")
-        
-        f.write("## 📝 Sample Texts\n\n")
-        for split_name, df in splits.items():
-            if 'text' in df.columns:
-                f.write(f"### {split_name.upper()} - First 2 Samples\n\n")
-                texts = df['text'].astype(str)
-                for i in range(min(2, len(texts))):
-                    f.write(f"{i+1}. {texts.iloc[i][:150]}...\n\n")
+            results = process_batch_with_model(
+                model, audio_arrays, sample_rates, reference_texts,
+                split_name, model_name
+            )
+            
+            all_results.extend(results)
+            
+            # Save intermediate results
+            split_results_df = pd.DataFrame(results)
+            split_output_dir = OUTPUT_DIR / split_name / model_name
+            split_output_dir.mkdir(parents=True, exist_ok=True)
+            
+            split_results_df.to_csv(
+                split_output_dir / f"{split_name}_{model_name}_results.csv",
+                index=False, encoding='utf-8'
+            )
+            
+            # Calculate and log summary
+            avg_wer = split_results_df['wer'].mean()
+            avg_time = split_results_df['processing_time'].mean()
+            logger.info(f"  ✓ {model_name} on {split_name}:")
+            logger.info(f"    Average WER: {avg_wer:.3f}")
+            logger.info(f"    Average time: {avg_time:.2f}s")
+            logger.info(f"    Samples processed: {len(results)}")
     
-    print(f"   ✅ Markdown report: {report_md}")
+    # Generate comprehensive analysis
+    logger.info(f"\n{'='*60}")
+    logger.info("Generating comprehensive analysis...")
+    logger.info(f"{'='*60}")
     
-    # 5. Final Summary
-    print("\n" + "=" * 70)
-    print("ANALYSIS COMPLETE - KEY FINDINGS")
-    print("=" * 70)
+    # Convert all results to DataFrame
+    all_results_df = pd.DataFrame(all_results)
     
-    print("\n🎯 **Dataset Characteristics:**")
-    print(f"   • Total conversations: {total_samples:,}")
-    print(f"   • Average duration: ~12 seconds")
-    print(f"   • Average words per conversation: ~28 words")
-    print(f"   • Audio format: OGG bytes in dictionary format")
+    # Save all results
+    all_results_path = OUTPUT_DIR / "all_transcriptions.csv"
+    all_results_df.to_csv(all_results_path, index=False, encoding='utf-8')
+    logger.info(f"✓ All transcriptions saved: {all_results_path}")
     
-    print("\n📊 **Split Distribution:**")
-    for split_name, df in splits.items():
-        percentage = (len(df) / total_samples) * 100
-        print(f"   • {split_name}: {len(df):,} samples ({percentage:.1f}%)")
+    # Generate analysis
+    analysis, analysis_df = generate_detailed_analysis(all_results)
     
-    print("\n✅ **Analysis outputs saved to:**")
-    print(f"   • Figures: {figures_dir}/")
-    print(f"   • CSV summary: {summary_csv}")
-    print(f"   • JSON analysis: {summary_json}")
-    print(f"   • Markdown report: {report_md}")
+    # Save analysis as JSON
+    analysis_path = OUTPUT_DIR / "dataset_analysis.json"
+    with open(analysis_path, 'w', encoding='utf-8') as f:
+        json.dump(analysis, f, indent=2, ensure_ascii=False)
+    logger.info(f"✓ Analysis saved: {analysis_path}")
     
-    print("\n" + "=" * 70)
-    print("NEXT STEP: Proceed with ASR implementation")
-    print("=" * 70)
+    # Save analysis as CSV
+    analysis_csv_path = OUTPUT_DIR / "analysis_summary.csv"
+    analysis_df.to_csv(analysis_csv_path, index=False, encoding='utf-8')
+    
+    # Create manual review CSV
+    review_df = create_manual_review_csv(all_results_df, OUTPUT_DIR)
+    
+    # Try to create interactive HTML report
+    try:
+        save_interactive_html(all_results_df, OUTPUT_DIR)
+    except Exception as e:
+        logger.warning(f"Could not create interactive report: {e}")
+    
+    # Print summary
+    print("\n" + "=" * 80)
+    print("📊 ANALYSIS COMPLETE")
+    print("=" * 80)
+    
+    # Overall statistics
+    total_samples = len(all_results_df)
+    unique_samples = all_results_df[['split', 'sample_id']].drop_duplicates().shape[0]
+    
+    print(f"\n📁 Dataset Processed:")
+    for split in SPLITS:
+        if split in dataset:
+            split_df = all_results_df[all_results_df['split'] == split]
+            split_samples = split_df[['split', 'sample_id']].drop_duplicates().shape[0]
+            print(f"  • {split.upper()}: {split_samples} samples")
+    
+    print(f"\n🤖 Models Tested:")
+    for model_name in MODELS_TO_TEST:
+        model_df = all_results_df[all_results_df['model'] == model_name]
+        if len(model_df) > 0:
+            avg_wer = model_df['wer'].mean()
+            avg_time = model_df['processing_time'].mean()
+            print(f"  • {model_name}:")
+            print(f"    - Average WER: {avg_wer:.3f}")
+            print(f"    - Average time: {avg_time:.2f}s")
+    
+    print(f"\n📊 Performance Summary:")
+    best_model = all_results_df.groupby('model')['wer'].mean().idxmin()
+    best_wer = all_results_df.groupby('model')['wer'].mean().min()
+    fastest_model = all_results_df.groupby('model')['processing_time'].mean().idxmin()
+    fastest_time = all_results_df.groupby('model')['processing_time'].mean().min()
+    
+    print(f"  • Best accuracy: {best_model} (WER: {best_wer:.3f})")
+    print(f"  • Fastest: {fastest_model} ({fastest_time:.2f}s per sample)")
+    
+    print(f"\n📂 Output Files:")
+    print(f"  • All transcriptions: {all_results_path}")
+    print(f"  • Analysis summary: {analysis_csv_path}")
+    print(f"  • Manual review data: {OUTPUT_DIR}/manual_review_data.csv")
+    print(f"  • Top 50 errors: {OUTPUT_DIR}/top_errors_for_review.csv")
+    print(f"  • Per-split results: {OUTPUT_DIR}/[split]/[model]/")
+    
+    print(f"\n🔍 For Manual Review:")
+    print(f"  1. Open {OUTPUT_DIR}/top_errors_for_review.csv")
+    print(f"  2. Check high-WER samples")
+    print(f"  3. Compare reference vs ASR text")
+    print(f"  4. Listen to original audio if needed")
+    
+    print(f"\n🎯 Recommendations:")
+    print(f"  1. Focus on samples with WER > 0.3")
+    print(f"  2. Check if errors are medical terms")
+    print(f"  3. Consider domain-specific fine-tuning")
+    print(f"  4. For production: {best_model} (accuracy) or {fastest_model} (speed)")
+    
+    print("\n" + "=" * 80)
 
 if __name__ == "__main__":
     main()

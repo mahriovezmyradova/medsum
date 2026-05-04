@@ -1,0 +1,32 @@
+# Web application dependencies
+# Install with: pip install -r webapp/requirements.txt
+
+# Core UI
+streamlit>=1.33.0          # 1.33+ required for st.audio_input (live recording)
+
+# AI models
+torch>=2.0.0
+transformers>=4.40.0
+sentence-transformers>=2.7.0
+openai-whisper>=20231106
+openai>=1.30.0             # GPT enhancement step
+
+# Audio processing
+soundfile>=0.12.0
+librosa>=0.10.0
+pydub>=0.25.1              # MP3/M4A decode fallback
+
+# ASR
+jiwer>=3.0.3               # WER/CER metrics
+
+# Summarization
+rouge-score>=0.1.2
+bert-score>=0.3.13
+
+# Database
+supabase>=2.3.0            # pip install supabase
+
+# Utilities
+numpy>=1.24.0
+pandas>=2.0.0
+python-dotenv>=1.0.0

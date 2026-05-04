@@ -15,20 +15,12 @@ from tqdm import tqdm
 import sys
 from sklearn.model_selection import train_test_split
 
-# Import AudioProcessor with fallback
+# Import AudioProcessor
 try:
-    from src.utils.audio_processing import AudioProcessor
+    from src.utils.audio_utils import AudioProcessor
 except ImportError:
-    try:
-        sys.path.append(str(Path(__file__).parent.parent))
-        from utils.audio_processing import AudioProcessor
-    except ImportError:
-        # Define minimal AudioProcessor if needed
-        class AudioProcessor:
-            def __init__(self, **kwargs):
-                pass
-            def process(self, item):
-                return item
+    sys.path.append(str(Path(__file__).parent.parent))
+    from utils.audio_utils import AudioProcessor
 
 # Setup logging
 logger.remove()  # Remove default logger
@@ -159,17 +151,10 @@ class MultiMedLoader:
     
     def _setup_audio_processor(self):
         """Setup audio processor based on config."""
-        audio_config = {
-            'target_sr': self._get_config_value('target_sample_rate', 16000),
-            'normalize': self._get_config_value('normalize_audio', True),
-            'remove_silence': self._get_config_value('remove_silence', False)
-        }
-        
-        # Handle different parameter names
-        if audio_config['target_sr'] is None:
-            audio_config['target_sr'] = self._get_config_value('sample_rate', 16000)
-        
-        self.audio_processor = AudioProcessor(**audio_config)
+        target_sr = self._get_config_value('target_sample_rate', 16000)
+        if target_sr is None:
+            target_sr = self._get_config_value('sample_rate', 16000)
+        self.audio_processor = AudioProcessor(target_sr=target_sr)
     
     # ==================== CORE LOADING METHODS ====================
     
@@ -363,20 +348,12 @@ class MultiMedLoader:
     load_samples = get_samples
     
     def _process_audio(self, audio_item):
-        """Process audio item to array and sample rate."""
+        """Process audio item to (array, sample_rate) using AudioProcessor."""
         try:
-            if isinstance(audio_item, (np.ndarray, list)):
-                # Already an array
-                return np.array(audio_item, dtype=np.float32), 16000
-            elif isinstance(audio_item, dict):
-                # Dict with array and sr
-                return audio_item.get('array'), audio_item.get('sample_rate', 16000)
-            elif hasattr(audio_item, '__array__'):
-                # Some audio object
-                return np.array(audio_item, dtype=np.float32), 16000
-            else:
-                logger.warning(f"Unknown audio type: {type(audio_item)}")
+            sample = self.audio_processor.process_audio_item(audio_item)
+            if sample is None:
                 return None, None
+            return sample.array, sample.sampling_rate
         except Exception as e:
             logger.warning(f"Audio processing failed: {e}")
             return None, None
