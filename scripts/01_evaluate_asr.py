@@ -269,13 +269,13 @@ def run_asr_model(cfg: dict, df: pd.DataFrame, processor: AudioProcessor) -> pd.
         log.error("Failed to load %s: %s", model_name, exc)
         return pd.DataFrame()
 
-    # ── check what's already cached ──────────────────────────────────────────
+    # ── load existing cache for this model ───────────────────────────────────
+    cached_df = pd.DataFrame()
     done_ids: set[int] = set()
     if CACHE_PATH.exists():
-        cached = pd.read_csv(CACHE_PATH)
-        done_ids = set(
-            cached.loc[cached["asr_model"] == model_name, "sample_id"].astype(int)
-        )
+        full_cache = pd.read_csv(CACHE_PATH)
+        cached_df  = full_cache[full_cache["asr_model"] == model_name].copy()
+        done_ids   = set(cached_df["sample_id"].astype(int))
         log.info("  %d samples already cached for %s – skipping those",
                  len(done_ids), model_name)
 
@@ -327,7 +327,7 @@ def run_asr_model(cfg: dict, df: pd.DataFrame, processor: AudioProcessor) -> pd.
         if len(rows) % CHECKPOINT_EVERY == 0:
             _append_cache(pd.DataFrame(rows[-CHECKPOINT_EVERY:]))
 
-    # flush remaining
+    # flush remaining new rows
     if rows:
         remainder = rows[-(len(rows) % CHECKPOINT_EVERY) or len(rows):]
         if remainder:
@@ -338,7 +338,14 @@ def run_asr_model(cfg: dict, df: pd.DataFrame, processor: AudioProcessor) -> pd.
     except Exception:
         pass
 
-    return pd.DataFrame(rows)
+    # Return cached rows merged with any newly transcribed rows so the
+    # summary always includes the full picture for this model.
+    new_df = pd.DataFrame(rows)
+    if not cached_df.empty and not new_df.empty:
+        return pd.concat([cached_df, new_df], ignore_index=True)
+    if not cached_df.empty:
+        return cached_df
+    return new_df
 
 
 def _append_cache(df: pd.DataFrame):
