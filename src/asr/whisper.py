@@ -153,6 +153,12 @@ class WhisperASR(BaseASR):
             # Temperature tuple enables Whisper's built-in fallback: if greedy
             # decoding produces repetitive or low-confidence output, it retries
             # with progressively higher temperatures instead of aborting.
+            #
+            # no_speech_threshold=0.99 effectively disables silence suppression —
+            # medical audio clips are always speech; empty outputs from false-positive
+            # silence detection are worse than a slightly noisy transcription.
+            # compression_ratio_threshold=3.5 prevents whisper_small from cutting off
+            # mid-utterance when it produces slightly repetitive output.
             options = {
                 "language": self.language,
                 "task": "transcribe",
@@ -161,9 +167,9 @@ class WhisperASR(BaseASR):
                 "best_of": self.best_of,
                 "temperature": (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
                 "condition_on_previous_text": False,
-                "no_speech_threshold": 0.8,
-                "compression_ratio_threshold": 2.8,
-                "logprob_threshold": -2.0,
+                "no_speech_threshold": 0.99,
+                "compression_ratio_threshold": 3.5,
+                "logprob_threshold": -2.5,
             }
             
             # Transcribe
