@@ -80,10 +80,11 @@ class WhisperASR(BaseASR):
         if device == "auto":
             if torch.cuda.is_available():
                 return "cuda"
-            elif torch.backends.mps.is_available():
-                return "mps"
-            else:
-                return "cpu"
+            # MPS (Apple Silicon) produces NaN logits during Whisper beam search,
+            # causing early termination.  CPU is also faster for Whisper on M-series
+            # chips because MPS kernel launch overhead dominates for these attention
+            # patterns.
+            return "cpu"
         return device
     
     def load_model(self):
