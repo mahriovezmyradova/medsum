@@ -150,18 +150,20 @@ class WhisperASR(BaseASR):
             if audio_max > 0:
                 audio = audio / audio_max
             
-            # Prepare options - pass beam_size and best_of to transcribe method
+            # Temperature tuple enables Whisper's built-in fallback: if greedy
+            # decoding produces repetitive or low-confidence output, it retries
+            # with progressively higher temperatures instead of aborting.
             options = {
                 "language": self.language,
                 "task": "transcribe",
                 "fp16": self.compute_type == "float16" and self.device == "cuda",
                 "beam_size": self.beam_size,
                 "best_of": self.best_of,
-                "temperature": self.temperature,
+                "temperature": (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
                 "condition_on_previous_text": False,
-                "no_speech_threshold": 0.6,
-                "compression_ratio_threshold": 2.4,
-                "logprob_threshold": -1.0,
+                "no_speech_threshold": 0.8,
+                "compression_ratio_threshold": 2.8,
+                "logprob_threshold": -2.0,
             }
             
             # Transcribe

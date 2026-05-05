@@ -65,24 +65,24 @@ class Wav2Vec2ASR(BaseASR):
     def load_model(self):
         if self._is_loaded:
             return
-        
+
         logger.info(f"Loading Wav2Vec2 model: {self.model_name}")
-        
+
         try:
-            # Create cache directory
-            model_cache_dir = self.cache_dir / "models" / "wav2vec2"
-            model_cache_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Load processor and model
-            self._processor = Wav2Vec2Processor.from_pretrained(
-                self.model_name,
-                cache_dir=str(model_cache_dir)
-            )
-            
-            self._model = Wav2Vec2ForCTC.from_pretrained(
-                self.model_name,
-                cache_dir=str(model_cache_dir)
-            )
+            # Try local HuggingFace hub cache first (no network needed).
+            # Fall back to downloading only if not found locally.
+            def _load(local_only: bool):
+                kwargs = {"local_files_only": local_only}
+                proc  = Wav2Vec2Processor.from_pretrained(self.model_name, **kwargs)
+                model = Wav2Vec2ForCTC.from_pretrained(self.model_name, **kwargs)
+                return proc, model
+
+            try:
+                self._processor, self._model = _load(local_only=True)
+                logger.info("Loaded from local cache (offline mode)")
+            except Exception:
+                logger.info("Not in local cache – downloading from HuggingFace …")
+                self._processor, self._model = _load(local_only=False)
             
             # Move to device
             self._model = self._model.to(self.device)

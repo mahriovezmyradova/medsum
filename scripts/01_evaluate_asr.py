@@ -156,6 +156,22 @@ def decode_audio(audio_field, processor: AudioProcessor) -> np.ndarray | None:
 # Metrics
 # ──────────────────────────────────────────────────────────────────────────────
 
+import re as _re
+
+def _normalise(text: str) -> str:
+    """Lowercase + strip punctuation for fair WER/CER comparison.
+
+    Whisper adds capitalisation and punctuation; the MultiMed reference is raw
+    lowercase without punctuation.  Normalising both sides before metric
+    computation prevents artificial inflation of CER/WER.
+    German umlauts (ä,ö,ü,ß) and word characters are preserved.
+    """
+    text = text.lower()
+    text = _re.sub(r"[^\w\s]", " ", text)   # drop punctuation
+    text = _re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 def compute_jiwer_metrics(ref: str, hyp: str) -> dict:
     """WER / CER / MER / WIL and error type breakdown via jiwer."""
     import jiwer
@@ -168,14 +184,20 @@ def compute_jiwer_metrics(ref: str, hyp: str) -> dict:
     if not hyp or not ref:
         return empty
 
+    # Normalise both sides so capitalisation / punctuation don't inflate metrics
+    ref_n = _normalise(ref)
+    hyp_n = _normalise(hyp)
+    if not ref_n or not hyp_n:
+        return empty
+
     try:
-        wer  = jiwer.wer(ref, hyp)
-        cer  = jiwer.cer(ref, hyp)
-        mer  = jiwer.mer(ref, hyp)
-        wil  = jiwer.wil(ref, hyp)
+        wer  = jiwer.wer(ref_n, hyp_n)
+        cer  = jiwer.cer(ref_n, hyp_n)
+        mer  = jiwer.mer(ref_n, hyp_n)
+        wil  = jiwer.wil(ref_n, hyp_n)
 
         # error type breakdown
-        out = jiwer.process_words(ref, hyp)
+        out = jiwer.process_words(ref_n, hyp_n)
         total_ops = out.substitutions + out.deletions + out.insertions + out.hits
         total_ops = max(total_ops, 1)
 
