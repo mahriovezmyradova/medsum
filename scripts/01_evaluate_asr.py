@@ -112,7 +112,7 @@ ASR_MODELS = [
 
 # Duration buckets for WER-by-length analysis
 DURATION_BINS   = [0, 5, 10, 20, 60]
-DURATION_LABELS = ["0–5 s", "5–10 s", "10–20 s", "20+ s"]
+DURATION_LABELS = ["0-5 s", "5-10 s", "10-20 s", "20+ s"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -307,17 +307,19 @@ def run_asr_model(cfg: dict, df: pd.DataFrame, processor: AudioProcessor) -> pd.
         rtf = elapsed / dur if dur > 0 else 0.0
 
         row_data = {
-            "sample_id":  int(idx),
-            "split":      str(row.get("split", "")),
-            "duration_s": round(dur, 2),
-            "dur_bin":    pd.cut([dur], bins=DURATION_BINS,
-                                 labels=DURATION_LABELS)[0],
-            "asr_model":  model_name,
-            "reference":  ref,
-            "hypothesis": hyp,
-            "confidence": round(conf, 4),
-            "rtf":        round(rtf, 4),
-            "asr_time_s": round(elapsed, 3),
+            "sample_id":       int(idx),
+            "split":           str(row.get("split", "")),
+            "duration_s":      round(dur, 2),
+            "dur_bin":         pd.cut([dur], bins=DURATION_BINS,
+                                      labels=DURATION_LABELS)[0],
+            "asr_model":       model_name,
+            "reference":       ref,
+            "reference_norm":  _normalise(ref),
+            "hypothesis":      hyp,
+            "hypothesis_norm": _normalise(hyp),
+            "confidence":      round(conf, 4),
+            "rtf":             round(rtf, 4),
+            "asr_time_s":      round(elapsed, 3),
             **jw,
             **mter,
         }
@@ -351,9 +353,9 @@ def run_asr_model(cfg: dict, df: pd.DataFrame, processor: AudioProcessor) -> pd.
 def _append_cache(df: pd.DataFrame):
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     if CACHE_PATH.exists():
-        df.to_csv(CACHE_PATH, mode="a", header=False, index=False)
+        df.to_csv(CACHE_PATH, mode="a", header=False, index=False, encoding="utf-8-sig")
     else:
-        df.to_csv(CACHE_PATH, index=False)
+        df.to_csv(CACHE_PATH, index=False, encoding="utf-8-sig")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -783,7 +785,7 @@ def main():
     print_console_summary(summary)
 
     # also dump clean CSV for script 02
-    all_df.to_csv(OUTPUT_DIR / "asr_full_results.csv", index=False)
+    all_df.to_csv(OUTPUT_DIR / "asr_full_results.csv", index=False, encoding="utf-8-sig")
     log.info("CSV dump → %s/asr_full_results.csv", OUTPUT_DIR)
 
 

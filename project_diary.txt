@@ -1,0 +1,107 @@
+PROJECT DIARY – Medical ASR & Summarization
+============================================
+
+17/03 (Mon)
+Based on the improvement suggestions, I added an additional dataset of medical conversations to further test the performance of ASR models of mine (Whisper and Wav2Vec).
+
+18/03 (Tue)
+After collecting generated transcriptions from speech-to-text models, I compiled the results into a csv file to further assess the performance of summarization algorithms.
+
+19/03 (Wed)
+Further research is done in literature review to find recent advancements in auto transcribing and summarizing to strengthen the choice of the model I am developing.
+
+20/03 (Thu)
+Collecting and reading deep into found papers to find out I can integrate into my model to make it unique in the field.
+
+21/03 (Fri)
+Improving the code, so it runs smoothly and integrating AI as the intermediate step in transcribing to access how it can improve the quality of transcribed text further affecting resulting summary.
+
+24/03 (Mon)
+Reordering the dataset and starting to build the web application using Python, Streamlit and Supabase.
+
+25/03 (Tue)
+Initial setup of the web app is being performed and design changes are made to include brand colors, logo, input fields.
+
+26/03 (Wed)
+Implementing the design for audio recording button and its logic where it listens in real time and notifies that the recording is in progress.
+
+27/03 (Thu)
+Researching more into patient information safety, designing and setting up the database and researching into the law side of the project.
+
+28/03 (Fri)
+Finished the first version of the web app, where the design is seamless and intuitive for the doctors while compiling with patient information safety.
+
+06/04 (Mon)
+Debugging CSV parsing issues in the transcription data file, ensuring the correct semicolon-delimited structure is maintained for the downstream summarization pipeline to process without errors.
+
+07/04 (Tue)
+Identified that the mT5 model was producing low-quality outputs, replacing it with German BART (Shahm/bart-german) and rewriting the summarization script to fix tokenization and generation parameters.
+
+08/04 (Wed)
+Running the German BART summarizer evaluation across all five ASR models — Whisper tiny, base, small and both Wav2Vec2 variants — measuring performance with ROUGE scores and medical term preservation rate.
+
+09/04 (Thu)
+Generating visualizations of the summarization results including ROUGE score comparisons, F1 heatmaps and summary length distributions to compare ASR and summarizer combinations.
+
+10/04 (Fri)
+Analysing the final evaluation outputs, identifying the best-performing ASR and summarization model pairings and documenting the findings ready for inclusion in the thesis.
+
+13/04 (Mon)
+Integrating the finalized ASR-to-summarization pipeline into the Streamlit web app, connecting the German BART model output directly to the interface for real-time summary display after transcription.
+
+14/04 (Tue)
+End-to-end testing of the complete web application, verifying the Supabase database integration and ensuring all transcription records and generated summaries are securely and correctly stored.
+
+15/04 (Wed)
+Finalising and cleaning up the codebase, reviewing all collected evaluation metrics across models and compiling the complete results section for the thesis.
+
+16/04 (Thu)
+Writing the methodology chapter of the thesis, documenting the ASR model selection process and justifying the choice of Whisper and Wav2Vec2 for German medical transcription.
+
+17/04 (Fri)
+Documenting the summarization model comparison, writing the evaluation section covering ROUGE scores and medical term preservation rates across all tested models.
+
+20/04 (Mon)
+Revisiting the web app to refine the UI based on initial testing, adjusting the layout and improving the readability of displayed transcriptions and summaries.
+
+21/04 (Tue)
+Conducting additional testing of edge cases in the audio recording module, ensuring the real-time transcription handles varying audio quality and background noise gracefully.
+
+22/04 (Wed)
+Writing the results and discussion chapter, comparing Whisper and Wav2Vec2 performance across different medical terminology and analysing where each model excels.
+
+23/04 (Thu)
+Creating final thesis figures — WER comparison charts, ROUGE heatmaps and model performance tables — ensuring all visualizations are correctly formatted for the document.
+
+24/04 (Fri)
+Reviewing patient data privacy compliance across the full application stack, making final adjustments to the Supabase database access policies and data handling logic.
+
+27/04 (Mon)
+Starting the conclusion chapter of the thesis, summarising the key findings from the ASR benchmarking and summarization evaluation and reflecting on the model's strengths and limitations.
+
+28/04 (Tue)
+Polishing the web application for the final demonstration, cleaning up the interface and ensuring smooth transitions between the recording, transcription and summary steps.
+
+29/04 (Wed)
+Proofreading and revising earlier thesis chapters based on supervisor feedback, addressing comments on the literature review and clarifying the motivation behind model choices.
+
+30/04 (Thu)
+Running a final end-to-end evaluation of the complete system with a fresh set of medical audio samples to validate the pipeline performs consistently before thesis submission.
+
+01/05 (Fri)
+Finalising the web app deployment setup, configuring environment variables and ensuring the Streamlit app and Supabase backend are correctly linked for the demonstration.
+
+04/05 (Mon)
+Compiling all appendices and supplementary materials for the thesis, including model configuration details, dataset statistics and sample transcription outputs.
+
+05/05 (Tue)
+Final review of the complete thesis document, checking formatting, references and figure numbering while ensuring all sections are consistent and complete.
+
+06/05 (Wed)
+Preparing the presentation slides for the thesis defence, structuring the narrative from problem motivation through model selection to final system demonstration.
+
+07/05 (Thu)
+Rehearsing the thesis defence presentation, refining the explanation of technical decisions and preparing answers to anticipated questions on model performance and data privacy.
+
+08/05 (Fri)
+Submitted the final thesis document and completed all required deliverables, marking the conclusion of the Medical ASR and Summarization project.

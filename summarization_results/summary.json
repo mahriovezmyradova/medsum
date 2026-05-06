@@ -1,0 +1,48 @@
+{
+  "total_samples": 400,
+  "asr_models": [
+    "whisper_tiny",
+    "whisper_base",
+    "whisper_small",
+    "wav2vec2_facebook_original",
+    "wav2vec2_jonatasgrosman"
+  ],
+  "summarizers": [
+    "bart_large_german",
+    "mt5_small",
+    "mt5_base",
+    "bert_extractive"
+  ],
+  "best_summarizer": "bert_extractive",
+  "best_f1_score": 0.703,
+  "performance_by_model": {
+    "bart_large_german": {
+      "wav2vec2_facebook_original": 0.0,
+      "wav2vec2_jonatasgrosman": 0.0,
+      "whisper_base": 0.0,
+      "whisper_small": 0.0,
+      "whisper_tiny": 0.0
+    },
+    "bert_extractive": {
+      "wav2vec2_facebook_original": 0.737707147494705,
+      "wav2vec2_jonatasgrosman": 0.7247914529492885,
+      "whisper_base": 0.6868960596297209,
+      "whisper_small": 0.7132398805463553,
+      "whisper_tiny": 0.6520202516497157
+    },
+    "mt5_base": {
+      "wav2vec2_facebook_original": 0.14570225012677346,
+      "wav2vec2_jonatasgrosman": 0.142358030040944,
+      "whisper_base": 0.1286879407781047,
+      "whisper_small": 0.13633702093209824,
+      "whisper_tiny": 0.14814654627258095
+    },
+    "mt5_small": {
+      "wav2vec2_facebook_original": 0.12056607276439373,
+      "wav2vec2_jonatasgrosman": 0.12996691453560022,
+      "whisper_base": 0.07864583955915225,
+      "whisper_small": 0.10452063747601517,
+      "whisper_tiny": 0.06957473890536078
+    }
+  }
+}
